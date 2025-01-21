@@ -14,7 +14,7 @@ from dash import callback_context
 
 def get_djia():
     url = 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average'
-    djia_df = pd.read_html(url)[2]
+    djia_df = pd.read_html(url)[3]
     return djia_df['Symbol'].tolist()
 
 # Generate ticker selection for Dash dropdown
