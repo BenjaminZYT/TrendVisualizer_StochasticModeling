@@ -7,8 +7,8 @@ from statsmodels.api import OLS, add_constant
 import plotly.express as px
 import plotly.graph_objects as go
 import dash
-import dash_core_components as dcc
-import dash_html_components as html
+from dash import dcc
+from dash import html
 from dash.dependencies import Input, Output, State
 from dash import callback_context
 
@@ -117,8 +117,8 @@ app.layout = html.Div([
 def validate_ticker(ticker):
     try:
         stock = yf.Ticker(ticker)
-        hist_data = stock.history(period='1d')
-        if hist_data.empty or {'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume'}.difference(hist_data.columns):
+        hist_data = stock.history(period='1d', auto_adjust=False)
+        if hist_data.empty or {'Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume', 'Dividends', 'Stock Splits'}.difference(hist_data.columns):
             return True
         return False
     except Exception as e:
@@ -132,9 +132,29 @@ def SGdrift_component(selected_data, order):
         max_window_length -= 1
     
     window_length = max_window_length if max_window_length > 1 else 3
-    trend = savgol_filter(selected_data, window_length=window_length, polyorder=order)
+    trend = savgol_filter(selected_data.squeeze(), window_length=window_length, polyorder=order)
     
     return trend
+
+# def SGdrift_component(selected_data, order):
+#     if len(selected_data) < 3:
+#         return selected_data.values #return the original data.
+
+#     max_window_length = len(selected_data) // 2
+#     if max_window_length % 2 == 0:
+#         max_window_length -= 1
+#     while max_window_length > len(selected_data):
+#         max_window_length -= 2
+#     while max_window_length > 1:
+#         try:
+#             trend = savgol_filter(selected_data, window_length=max_window_length, polyorder=order)
+#             return trend
+#         except ValueError:
+#             max_window_length -= 2
+#     window_length = 3
+#     polyorder = 2
+#     trend = savgol_filter(selected_data, window_length=window_length, polyorder=polyorder)
+#     return trend
 
 
 # Computing a parameter that will be useful for several models below, starting with OU
@@ -291,7 +311,7 @@ def update_plots(go_clicks, reset_clicks, view_model_clicks, dropdown_value, inp
         start_date = end_date - timedelta(days=365 * n_years)
         
         try:
-            data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+            data = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
             if data.empty:
                 return {}, {}, f'No data found for {ticker}.', None, None
             global_data = data
@@ -400,7 +420,3 @@ def download_csv(n_clicks):
 
 if __name__ == "__main__":
     app.run_server(debug=True)
-
-
-
-
