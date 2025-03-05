@@ -1,7 +1,7 @@
 dash==2.17.1
 pandas
 gunicorn
-yfinance==0.2.36
+yfinance
 dash-core-components==2.0.0
 dash-html-components==2.0.0
 dash-bootstrap-components
@@ -14,3 +14,5 @@ flask
 werkzeug
 websockets
 requests
+lxml
+beautifulsoup4
