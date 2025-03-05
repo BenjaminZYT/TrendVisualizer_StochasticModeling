@@ -14,11 +14,19 @@ from dash import callback_context
 
 def get_djia():
     url = 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average'
-    djia_df = pd.read_html(url)[2]
-    return djia_df['Symbol'].tolist()
+    try:
+        tables = pd.read_html(url)
+        for table in tables:
+            if 'Symbol' in table.columns:
+                return table, table['Symbol'].tolist()
+    except Exception as e:
+        print(f"Error fetching DJIA table: {e}")
+        return pd.DataFrame(), []
+
+    return pd.DataFrame(), []
 
 # Generate ticker selection for Dash dropdown
-djia_tickers = get_djia()
+djia_df, djia_tickers = get_djia()
 dropdown_options = [
     {'label': '^IRX', 'value': '^IRX'},
     {'label': '^TYX', 'value': '^TYX'},
