@@ -197,7 +197,7 @@ def GBM(ticker_data):
     Sigma = log_returns.std()
     T = len(choice_prices)
     dt = 1
-    gbm_prices = [choice_prices[0]]
+    gbm_prices = [choice_prices.iloc[0]]
     for _ in range(1, T):
         drift = (Mu - 0.5 * Sigma**2) * dt
         shock = Sigma * np.sqrt(dt) * np.random.normal()
@@ -282,131 +282,170 @@ global_ohlc = None
      State('model-dropdown', 'value')]
 )
 def update_plots(go_clicks, reset_clicks, view_model_clicks, dropdown_value, input_value, n_years, ohlc, selected_model):
-    global global_data, global_ticker, global_ohlc
-    ctx = callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    try:
+        global global_data, global_ticker, global_ohlc
+        ctx = callback_context
+        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    trend_fig = dash.no_update
-    model_fig = dash.no_update
+        trend_fig = dash.no_update
+        model_fig = dash.no_update
 
-    if triggered_id == 'reset-button':
-        global_data = None
-        global_ticker = None
-        global_ohlc = None
-        return {}, {}, '', None, ''
+        if triggered_id == 'reset-button':
+            global_data = None
+            global_ticker = None
+            global_ohlc = None
+            return {}, {}, '', None, ''
 
-    if triggered_id == 'go-button':
-        if dropdown_value and input_value:
-            if dropdown_value != input_value.upper():
-                return {}, {}, 'Tickers do not match. Please ensure both tickers are the same.', None, None
+        if triggered_id == 'go-button':
+            if dropdown_value and input_value:
+                if dropdown_value != input_value.upper():
+                    return {}, {}, 'Tickers do not match. Please ensure both tickers are the same.', None, None
 
-        ticker = dropdown_value if dropdown_value else input_value.upper()
-        if not ticker:
-            return {}, {}, 'Please provide a ticker.', None, None
+            ticker = dropdown_value if dropdown_value else input_value.upper()
+            if not ticker:
+                return {}, {}, 'Please provide a ticker.', None, None
 
-        if not validate_ticker(ticker):
-            return {}, {}, 'Invalid ticker or no data available.', None, None
+            if not validate_ticker(ticker):
+                return {}, {}, 'Invalid ticker or no data available.', None, None
 
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=365 * n_years)
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=365 * n_years)
+            
+            try:
+                data = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
+                if data.empty:
+                    return {}, {}, f'No data found for {ticker}.', None, None
+                global_data = data
+                global_ticker = ticker
+                global_ohlc = ohlc
+            except Exception as e:
+                return {}, {}, f'Error retrieving data for {ticker}: {str(e)}', None, None
+
+            selected_data = data[ohlc]
+            if isinstance(selected_data, pd.DataFrame):
+                selected_data = selected_data.iloc[:, 0]
+                
+            trend_line_1 = SGdrift_component(selected_data, 4)
+            trend_line_2 = SGdrift_component(selected_data, 5)
+
+            # plot_data = pd.DataFrame({
+            #     'Date': selected_data.index,
+            #     'Price or Volume': selected_data.values,
+            #     'Trend Line': trend_line_1,
+            #     'Alternative Trend Line': trend_line_2
+            # })
+            plot_data = pd.DataFrame({
+                'Date': selected_data.index,
+                'Price or Volume': selected_data.values,
+                'Trend Line': trend_line_1 if trend_line_1.ndim == 1 else trend_line_1.squeeze(),
+                'Alternative Trend Line': trend_line_2 if trend_line_2.ndim == 1 else trend_line_2.squeeze()
+            })
+
+
+            trend_fig = px.line(
+                plot_data,
+                x='Date',
+                y=['Price or Volume', 'Alternative Trend Line', 'Trend Line'],
+                labels={'value': '', 'variable': ''},
+                title=f'Trend of "{ohlc}" for {ticker}'
+            )
+            
+            trend_fig.add_annotation(
+                text="By Benjamin Z.Y. Teoh @ July 2024 @ Alpharetta, GA",
+                xref="paper", yref="paper",
+                x=0.5, y=1.1,
+                showarrow=False,
+                font=dict(size=9)
+            )
+
+            trend_fig.update_traces(mode='lines', line=dict(color='lightblue'), selector=dict(name='Price or Volume'))
+            trend_fig.update_traces(mode='lines', line=dict(color='red'), selector=dict(name='Trend Line'))
+            trend_fig.update_traces(mode='lines', line=dict(color='blue'), selector=dict(name='Alternative Trend Line'))
+
+            trend_fig.update_layout(xaxis_title='', yaxis_title='')
+            trend_fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5))
+            trend_fig.update_layout(legend=dict(traceorder='reversed'))
+
+        # if triggered_id == 'view-model-button':
+        #     if global_data is None:
+        #         return trend_fig, {}, 'Please generate the trend plot first.', None, None
+
+        #     selected_data = global_data[ohlc]
+        #     ticker_symbol = global_ticker
+        if triggered_id == 'view-model-button':
+            if global_data is None:
+                return trend_fig, {}, 'Please generate the trend plot first.', None, None
         
-        try:
-            data = yf.download(ticker, start=start_date, end=end_date, progress=False, auto_adjust=False)
-            if data.empty:
-                return {}, {}, f'No data found for {ticker}.', None, None
-            global_data = data
-            global_ticker = ticker
-            global_ohlc = ohlc
-        except Exception as e:
-            return {}, {}, f'Error retrieving data for {ticker}: {str(e)}', None, None
+            # Extract the desired column data and ensure it's 1D
+            selected_data = global_data[ohlc]
+            if isinstance(selected_data, pd.DataFrame):
+                selected_data = selected_data.iloc[:, 0]
+            
+            ticker_symbol = global_ticker
 
-        selected_data = data[ohlc]
-        trend_line_1 = SGdrift_component(selected_data, 4)
-        trend_line_2 = SGdrift_component(selected_data, 5)
+            if selected_model == 'gbm1':
+                model_prices = GBM(selected_data)
+                title = 'Geometric Brownian Motion Model'
+            elif selected_model == 'mjd1':
+                model_prices = MJD(selected_data)
+                title = 'Merton Jump-Diffusion Model'
+            elif selected_model == 'mr1':
+                model_prices = MR(selected_data)
+                title = 'Mean Reverting Model'
+            elif selected_model == 'cir1':
+                model_prices = CIR(selected_data)
+                title = 'Cox-Ingersoll-Ross Model'
+            else:
+                return trend_fig, {}, 'Please select a valid model.', None, None
 
-        plot_data = pd.DataFrame({
-            'Date': selected_data.index,
-            'Price or Volume': selected_data.values,
-            'Trend Line': trend_line_1,
-            'Alternative Trend Line': trend_line_2
-        })
+            model_data = pd.DataFrame({
+                'Date': selected_data.index,
+                'Actual Price or Volume': selected_data.values,
+                'Modeled Price or Volume': model_prices
+            })
 
-        trend_fig = px.line(plot_data, x='Date', y=['Price or Volume', 'Alternative Trend Line', 'Trend Line'],
-                            labels={'value': '', 'variable': ''},
-                            title=f'Trend of "{ohlc}" for {ticker}')
-        
-        trend_fig.add_annotation(
-            text="By Benjamin Z.Y. Teoh @ July 2024 @ Alpharetta, GA",
-            xref="paper", yref="paper",
-            x=0.5, y=1.1,
-            showarrow=False,
-            font=dict(size=9)
-        )
+            model_fig = px.line(
+                model_data,
+                x='Date',
+                y=['Actual Price or Volume', 'Modeled Price or Volume'],
+                labels={'value': '', 'variable': ''},
+                title=f'{title} on {ticker_symbol} "{ohlc}"'
+            )
+            
+            long_term_mean = selected_data.mean()
+            ltm = round(long_term_mean, 2)
+            
+            model_fig.add_trace(
+                go.Scatter(
+                    x=model_data['Date'],
+                    y=[long_term_mean]*len(model_data['Date']),
+                    mode='lines',
+                    line=dict(color='gray', dash='dash'),
+                    name=f'Long-term Mean {ltm}'
+                )
+            )
 
-        trend_fig.update_traces(mode='lines', line=dict(color='lightblue'), selector=dict(name='Price or Volume'))
-        trend_fig.update_traces(mode='lines', line=dict(color='red'), selector=dict(name='Trend Line'))
-        trend_fig.update_traces(mode='lines', line=dict(color='blue'), selector=dict(name='Alternative Trend Line'))
+            model_fig.add_annotation(
+                text="By Benjamin Z.Y. Teoh @ July 2024 @ Alpharetta, GA",
+                xref="paper", yref="paper",
+                x=0.5, y=1.1,
+                showarrow=False,
+                font=dict(size=9)
+            )
 
-        trend_fig.update_layout(xaxis_title='', yaxis_title='')
-        trend_fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5))
-        trend_fig.update_layout(legend=dict(traceorder='reversed'))
+            model_fig.update_traces(mode='lines', line=dict(color='blue'), selector=dict(name='Actual'))
+            model_fig.update_traces(mode='lines', line=dict(color='lightblue'), selector=dict(name='Modeled'))
 
-    if triggered_id == 'view-model-button':
-        if global_data is None:
-            return trend_fig, {}, 'Please generate the trend plot first.', None, None
+            model_fig.update_layout(xaxis_title='', yaxis_title='')
+            model_fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5))
+            model_fig.update_layout(legend=dict(traceorder='reversed'))
 
-        selected_data = global_data[ohlc]
-        ticker_symbol = global_ticker
-        ohlcv = global_ohlc
-
-        if selected_model == 'gbm1':
-            model_prices = GBM(selected_data)
-            title = 'Geometric Brownian Motion Model'
-        elif selected_model == 'mjd1':
-            model_prices = MJD(selected_data)
-            title = 'Merton Jump-Diffusion Model'
-        elif selected_model == 'mr1':
-            model_prices = MR(selected_data)
-            title = 'Mean Reverting Model'
-        elif selected_model == 'cir1':
-            model_prices = CIR(selected_data)
-            title = 'Cox-Ingersoll-Ross Model'
-        else:
-            return trend_fig, {}, 'Please select a valid model.', None, None
-
-        model_data = pd.DataFrame({
-            'Date': selected_data.index,
-            'Actual Price or Volume': selected_data.values,
-            'Modeled Price or Volume': model_prices
-        })
-
-        model_fig = px.line(model_data, x='Date', y=['Actual Price or Volume', 'Modeled Price or Volume'],
-                            labels={'value': '', 'variable': ''},
-                            title=f'{title} on {ticker_symbol} "{ohlc}"')
-        
-        long_term_mean = selected_data.mean()
-        ltm = round(long_term_mean, 2)
-        
-        model_fig.add_trace(go.Scatter(x=model_data['Date'], y=[long_term_mean]*len(model_data['Date']),
-                               mode='lines', line=dict(color='gray', dash='dash'),
-                               name=f'Long-term Mean {ltm}'))
-
-        model_fig.add_annotation(
-            text="By Benjamin Z.Y. Teoh @ July 2024 @ Alpharetta, GA",
-            xref="paper", yref="paper",
-            x=0.5, y=1.1,
-            showarrow=False,
-            font=dict(size=9)
-        )
-
-        model_fig.update_traces(mode='lines', line=dict(color='blue'), selector=dict(name='Actual'))
-        model_fig.update_traces(mode='lines', line=dict(color='lightblue'), selector=dict(name='Modeled'))
-
-        model_fig.update_layout(xaxis_title='', yaxis_title='')
-        model_fig.update_layout(legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5))
-        model_fig.update_layout(legend=dict(traceorder='reversed'))
-
-    return trend_fig, model_fig, '', None, ''
+        return trend_fig, model_fig, '', None, ''
+    except Exception as ex:
+        import traceback
+        traceback.print_exc()
+        # Return safe default values ensuring five outputs
+        return {}, {}, f"Unexpected error: {str(ex)}", None, ''
 
 @app.callback(
     Output('download-dataframe', 'data'),
